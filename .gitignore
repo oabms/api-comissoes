@@ -1,0 +1,20 @@
+node_modules/
+
+# Configuração com credenciais — nunca versionar.
+# Apenas .env.example vai para o repositório.
+.env
+.env.*
+!.env.example
+
+logs/
+*.log
+
+.vscode/
+.idea/
+coverage/
+dist/
+.codegraph/
+
+# Windows / macOS
+Thumbs.db
+.DS_Store
