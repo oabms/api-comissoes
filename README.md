@@ -1,579 +1,424 @@
-# API Boilerplate — OAB/MS
+# API Comissões — OAB/MS
 
-Ponto de partida padrão para as APIs Node.js + SQL Server da OAB/MS.
+Consulta a composição das comissões da OAB/MS. É uma API **só de leitura**: ela
+não cria, não altera e não apaga nada.
 
-Consolida os padrões já usados em `api-endereco`, `api-protocolo`,
-`api-register-login`, `api-anexo-ged`, `api-portes` e `api-gerador-titulos`:
-arquitetura em camadas, respostas padronizadas, tratamento central de erros,
-logs com rotação, autenticação por JWT/API Key e deploy com PM2.
+Responde a duas perguntas:
+
+- **Quem são os membros de uma comissão?** — com o cargo de cada um e desde
+  quando está lá;
+- **De quais comissões um advogado participa?** — com o cargo, a data de
+  entrada e, se já saiu, a data de saída.
+
+> Documentação técnica do projeto (instalação, arquitetura, deploy):
+> [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md).
 
 ---
 
 ## Sumário
 
-- [Como começar uma API nova](#como-começar-uma-api-nova)
-- [Instalação](#instalação)
-- [Configuração](#configuração)
-- [Execução](#execução)
-- [Arquitetura](#arquitetura)
-- [Estrutura de pastas](#estrutura-de-pastas)
-- [Criando um módulo em 5 passos](#criando-um-módulo-em-5-passos)
-- [Contrato de resposta](#contrato-de-resposta)
-- [Tratamento de erros](#tratamento-de-erros)
-- [Acesso ao banco](#acesso-ao-banco)
-- [Autenticação](#autenticação)
-- [Paginação](#paginação)
-- [Logs](#logs)
-- [Deploy](#deploy)
-- [Convenções](#convenções)
+- [Começando](#começando)
+- [Os endpoints](#os-endpoints)
+  - [Listar comissões](#listar-comissões)
+  - [Detalhe de uma comissão](#detalhe-de-uma-comissão)
+  - [Membros de uma comissão](#membros-de-uma-comissão)
+  - [Comissões de um advogado](#comissões-de-um-advogado)
+- [Como são as respostas](#como-são-as-respostas)
+- [Erros](#erros)
+- [Coisas que é bom saber](#coisas-que-é-bom-saber)
+- [Perguntas frequentes](#perguntas-frequentes)
 
 ---
 
-## Como começar uma API nova
+## Começando
+
+Não precisa de token, senha nem cadastro: todos os endpoints são públicos e
+funcionam com um `GET` simples.
 
 ```bash
-# 1. Copie a pasta
-cp -r api-boilerplate api-comissoes
-cd api-comissoes
-
-# 2. Ajuste a identidade do projeto
-#    - package.json    -> name, description, keywords
-#    - ecosystem.config.js -> apps[0].name
-#    - .env            -> API_NAME, PORT, credenciais do banco
-
-# 3. Instale
-npm install
-
-# 4. Renomeie o módulo de exemplo para o seu domínio
-#    (ver "Criando um módulo em 5 passos")
-
-# 5. Rode
-npm run dev
+# homologação
+curl http://localhost:5500/api/comissoes?q=jovem
 ```
 
-O módulo `exemplo` existe para ser copiado e depois **apagado**. Ele demonstra
-listagem paginada com busca, detalhe por ID e criação transacional — que é
-exatamente o formato de uma API de comissões (listar comissões, detalhar uma,
-listar membros).
+| Ambiente | Endereço base |
+| --- | --- |
+| Homologação | `http://<servidor-de-homologacao>:5500/api` |
+| Produção | `http://<servidor-de-producao>:5500/api` |
+
+Confirme com a TI os endereços dos dois ambientes antes de publicar.
+
+Duas URLs ajudam a se situar:
+
+- `GET /api` — lista todos os endpoints disponíveis;
+- `GET /api/health` — diz se a API e o banco estão no ar.
 
 ---
 
-## Instalação
+## Os endpoints
+
+| O que você quer | Chame |
+| --- | --- |
+| Achar uma comissão pelo nome | `GET /api/comissoes?q=penal` |
+| Ver os dados de uma comissão | `GET /api/comissoes/103` |
+| Ver quem compõe uma comissão | `GET /api/comissoes/103/membros` |
+| Ver as comissões de um advogado (pelo nº da OAB) | `GET /api/pessoas/oab/22531/comissoes` |
+| Ver as comissões de um advogado (pelo ID do cadastro) | `GET /api/pessoas/54164/comissoes` |
+
+---
+
+### Listar comissões
+
+```
+GET /api/comissoes
+```
+
+Use para descobrir o **ID** de uma comissão — é ele que os outros endpoints
+pedem.
+
+| Parâmetro | Padrão | Para que serve |
+| --- | --- | --- |
+| `q` | — | Busca pelo nome. Basta um pedaço: `q=penal` acha "COMISSÃO DE DIREITO PENAL MILITAR". Mínimo de 3 letras |
+| `page` | `1` | Página desejada |
+| `limit` | `20` | Quantos itens por página (máximo 100) |
 
 ```bash
-npm install
+curl "http://localhost:5500/api/comissoes?q=penal&limit=3"
 ```
 
-Requisitos: Node.js 18+ e acesso de rede ao SQL Server.
-
----
-
-## Configuração
-
-Copie `.env.example` para `.env` e preencha:
-
-```bash
-cp .env.example .env
-```
-
-O projeto trabalha com **dois arquivos de ambiente**:
-
-| Arquivo        | Quando é carregado        |
-| -------------- | ------------------------- |
-| `.env`         | padrão (homologação/dev)  |
-| `.env.producao`| quando `APP_ENV=producao` |
-
-Nenhum dos dois vai para o Git — somente `.env.example`.
-
-Todas as variáveis são lidas e validadas em [`src/config/env.js`](src/config/env.js).
-**Nenhum outro arquivo do projeto lê `process.env` diretamente.** Se faltar uma
-variável obrigatória, a API não sobe — falha no boot em vez de erro obscuro em
-produção.
-
----
-
-## Execução
-
-```bash
-npm run dev      # nodemon, recarrega ao salvar
-npm start        # node server.js
-```
-
-Verificação rápida:
-
-```bash
-curl http://localhost:5500/api/health
-curl http://localhost:5500/api           # catálogo de endpoints
-```
-
----
-
-## Arquitetura
-
-Fluxo de uma requisição:
-
-```
-requisição
-   │
-   ▼
-server.js ──► src/app.js
-   │            helmet ▸ cors ▸ json ▸ requestLogger ▸ rateLimit
-   ▼
-src/routes/         define a URL e encadeia os middlewares
-   ▼
-src/validators/     valida e sanitiza formato (express-validator)
-   ▼
-middlewares/validate  interrompe com 400 se algo falhou
-   ▼
-src/controllers/    lê a requisição, chama o service, devolve Response
-   ▼
-src/services/       REGRA DE NEGÓCIO + mapeamento dos dados
-   ▼
-src/services/*/queries/   SQL isolado, com parâmetros nomeados
-   ▼
-DatabaseService     pool, tipagem de parâmetros, transações
-   ▼
-SQL Server
-```
-
-Erros em qualquer ponto sobem pelo `asyncHandler` até o `errorHandler`, que
-formata a resposta e registra o log.
-
-**Regra de ouro de cada camada:**
-
-| Camada     | Faz                                                | Não faz                                  |
-| ---------- | -------------------------------------------------- | ---------------------------------------- |
-| Route      | define URL, ordem dos middlewares                   | lógica                                   |
-| Validator  | formato, tipo, tamanho, sanitização                 | consulta ao banco, regra de negócio      |
-| Controller | traduz HTTP ⇄ service                               | SQL, regra, `try/catch`                  |
-| Service    | regra de negócio, transações, mapeamento            | conhecer `req`/`res`                     |
-| Queries    | SQL                                                 | lógica em JavaScript                     |
-
----
-
-## Estrutura de pastas
-
-```
-api-boilerplate/
-├── server.js                    Boot, graceful shutdown, erros de processo
-├── ecosystem.config.js          PM2
-├── .env.example                 Modelo de configuração (versionado)
-│
-└── src/
-    ├── app.js                   Montagem do Express (separado do listen)
-    │
-    ├── config/
-    │   ├── env.js               Carrega e VALIDA as variáveis de ambiente
-    │   ├── database.js          Config do SQL Server + instância singleton
-    │   └── logger.js            Winston com rotação diária
-    │
-    ├── routes/
-    │   ├── index.js             Registro dos módulos + catálogo GET /api
-    │   ├── healthRoutes.js
-    │   └── exemploRoutes.js     ← modelo
-    │
-    ├── controllers/
-    │   ├── HealthController.js
-    │   └── ExemploController.js ← modelo
-    │
-    ├── services/
-    │   ├── base/
-    │   │   ├── DatabaseService.js   Pool, query tipada, transações
-    │   │   └── BaseService.js       Classe base (this.db + logs nomeados)
-    │   ├── HealthService.js
-    │   └── exemplo/                 ← modelo de módulo
-    │       ├── ExemploService.js
-    │       ├── queries/exemploQueries.js
-    │       └── constants/exemploConstants.js
-    │
-    ├── validators/
-    │   └── exemploValidator.js  ← modelo
-    │
-    ├── middlewares/
-    │   ├── authMiddleware.js    JWT + API Key
-    │   ├── rateLimiter.js       Limitador global + fábrica
-    │   ├── requestLogger.js     Uma linha por requisição
-    │   ├── validate.js          Coletor do express-validator
-    │   ├── notFound.js          404 no formato padrão
-    │   └── errorHandler.js      Tratamento central (último middleware)
-    │
-    └── utils/
-        ├── Response.js          Contrato único de resposta
-        ├── AppError.js          Erros esperados de negócio
-        ├── asyncHandler.js      Captura rejeições em rotas async
-        ├── pagination.js        OFFSET/FETCH + meta + escape de LIKE
-        └── constants.js         HTTP_STATUS, ERROR_CODES, PAGINACAO
-```
-
----
-
-## Criando um módulo em 5 passos
-
-Exemplo: módulo `comissao`.
-
-**1. Queries** — `src/services/comissao/queries/comissaoQueries.js`
-
-```js
-module.exports = {
-  LISTAR_MEMBROS: `
-    SELECT m.ID, p.Nome, c.Descricao AS Comissao, m.Cargo
-    FROM MembroComissao m
-    INNER JOIN Pessoa p   ON m.Pessoa  = p.ID
-    INNER JOIN Comissao c ON m.Comissao = c.ID
-    WHERE m.Comissao = @comissaoId
-    ORDER BY p.Nome
-  `
-};
-```
-
-**2. Service** — `src/services/comissao/ComissaoService.js`
-
-```js
-const BaseService = require('../base/BaseService');
-const queries = require('./queries/comissaoQueries');
-const AppError = require('../../utils/AppError');
-
-class ComissaoService extends BaseService {
-  constructor() {
-    super('ComissaoService');
-  }
-
-  mapearMembro(linha) {
-    return {
-      id: Number(linha.ID),
-      nome: linha.Nome,
-      comissao: linha.Comissao,
-      cargo: linha.Cargo
-    };
-  }
-
-  async listarMembros(comissaoId) {
-    const linhas = await this.db.query(queries.LISTAR_MEMBROS, {
-      comissaoId: Number(comissaoId)
-    });
-
-    if (!linhas.length) {
-      throw AppError.naoEncontrado('Comissão sem membros ou inexistente.');
+```json
+{
+  "success": true,
+  "message": "Comissões encontradas.",
+  "data": [
+    {
+      "id": 162,
+      "descricao": "COMISSÃO DE DIREITO PENAL MILITAR",
+      "sigla": "CDPM",
+      "inicioVigencia": null,
+      "fimVigencia": null,
+      "totalMembrosVigentes": 1
     }
-
-    return linhas.map(linha => this.mapearMembro(linha));
+  ],
+  "meta": {
+    "pagina": 1,
+    "limite": 3,
+    "total": 3,
+    "totalPaginas": 1,
+    "temProxima": false,
+    "temAnterior": false
   }
 }
-
-module.exports = new ComissaoService();
 ```
 
-**3. Controller** — `src/controllers/ComissaoController.js`
-
-```js
-const ComissaoService = require('../services/comissao/ComissaoService');
-const Response = require('../utils/Response');
-
-class ComissaoController {
-  async listarMembros(req, res) {
-    const membros = await ComissaoService.listarMembros(req.params.id);
-    return Response.success(res, membros, 'Membros encontrados.');
-  }
-}
-
-module.exports = new ComissaoController();
-```
-
-**4. Validator** — `src/validators/comissaoValidator.js`
-
-```js
-const { param } = require('express-validator');
-
-class ComissaoValidator {
-  listarMembros() {
-    return [
-      param('id')
-        .isInt({ min: 1 })
-        .withMessage('O ID da comissão deve ser um número inteiro positivo.')
-        .toInt()
-    ];
-  }
-}
-
-module.exports = new ComissaoValidator();
-```
-
-**5. Rotas** — `src/routes/comissaoRoutes.js` e registro no índice
-
-```js
-const express = require('express');
-const ComissaoController = require('../controllers/ComissaoController');
-const ComissaoValidator = require('../validators/comissaoValidator');
-const validate = require('../middlewares/validate');
-const asyncHandler = require('../utils/asyncHandler');
-
-const router = express.Router();
-
-router.get(
-  '/:id/membros',
-  ComissaoValidator.listarMembros(),
-  validate,
-  asyncHandler(ComissaoController.listarMembros)
-);
-
-module.exports = router;
-```
-
-Em `src/routes/index.js`:
-
-```js
-const comissaoRoutes = require('./comissaoRoutes');
-router.use('/comissoes', comissaoRoutes);
-```
-
-...e adicione a rota ao objeto `ENDPOINTS` do mesmo arquivo, que alimenta o
-catálogo em `GET /api` e o log de boot.
+`sigla`, `inicioVigencia` e `fimVigencia` costumam vir `null` — o cadastro
+antigo não preencheu esses campos para a maioria das comissões. Conte sempre com
+`descricao`, que está sempre preenchida.
 
 ---
 
-## Contrato de resposta
+### Detalhe de uma comissão
 
-Toda resposta segue o mesmo formato, para que o frontend trate tudo de modo
-genérico.
+```
+GET /api/comissoes/{id}
+```
 
-**Sucesso**
+Os mesmos campos da listagem, para uma comissão só.
+
+```bash
+curl "http://localhost:5500/api/comissoes/103"
+```
+
+---
+
+### Membros de uma comissão
+
+```
+GET /api/comissoes/{id}/membros
+```
+
+**Por padrão devolve só quem está em exercício hoje.** Para ver também quem já
+saiu, passe `vigentes=false`.
+
+| Parâmetro | Padrão | Para que serve |
+| --- | --- | --- |
+| `vigentes` | `true` | `false` inclui também os membros que já saíram |
+| `cargo` | — | Filtra por um cargo (ex.: `54` = presidente — [tabela abaixo](#os-cargos)) |
+| `q` | — | Busca pelo nome da pessoa. Mínimo de 3 letras |
+| `page` | `1` | Página desejada |
+| `limit` | `20` | Quantos por página (máximo 100) |
+
+A lista já vem **na ordem da mesa diretora**: presidente, vice-presidente,
+secretário-geral, secretário-geral adjunto e, por último, os membros — cada
+faixa em ordem alfabética. Não precisa reordenar do seu lado.
+
+```bash
+curl "http://localhost:5500/api/comissoes/103/membros"
+```
 
 ```json
 {
   "success": true,
   "message": "Membros encontrados.",
-  "data": [ ... ],
-  "timestamp": "2026-09-01T12:00:00.000Z"
+  "data": [
+    {
+      "id": 2916,
+      "pessoa": {
+        "id": 59962,
+        "nome": "KARINA LOPES KOSCHINSKI CANHETE",
+        "registroConselho": "21688"
+      },
+      "cargo": {
+        "id": 54,
+        "descricao": "Presidente de Comissão"
+      },
+      "cargoComplemento": "Presidente de Comissão COMISSÃO DA JOVEM ADVOCACIA",
+      "dataInicio": "2022-01-14T00:00:00.000Z",
+      "dataFim": null,
+      "vigente": true
+    }
+  ],
+  "meta": {
+    "pagina": 1,
+    "limite": 20,
+    "total": 98,
+    "totalPaginas": 5,
+    "temProxima": true,
+    "temAnterior": false
+  }
 }
 ```
 
-**Sucesso paginado** (`Response.paginado`)
+Leitura dos campos:
+
+| Campo | O que é |
+| --- | --- |
+| `id` | Identificador da **participação**, não da pessoa. A mesma pessoa em duas comissões tem dois `id` diferentes |
+| `pessoa.id` | ID do cadastro da pessoa |
+| `pessoa.registroConselho` | Número da inscrição na OAB. Pode vir `null` para quem não é advogado inscrito |
+| `cargo.descricao` | Cargo na comissão: "Presidente de Comissão", "Membro de Comissão"… |
+| `cargoComplemento` | Texto livre do cadastro antigo, normalmente cargo + nome da comissão. Útil para conferência, não para exibir |
+| `dataInicio` | Quando entrou. **Sempre preenchida** |
+| `dataFim` | Quando saiu. `null` = ainda está na comissão |
+| `vigente` | `true` se está em exercício. É `dataFim` já interpretada para você |
+
+---
+
+### Comissões de um advogado
+
+Duas formas de dizer de quem você está falando — a resposta é idêntica.
+
+```
+GET /api/pessoas/oab/{numero-da-oab}/comissoes     ← use esta
+GET /api/pessoas/{id}/comissoes
+```
+
+Prefira a primeira: o número da OAB é o que você costuma ter em mãos. Zeros à
+esquerda são aceitos (`/oab/022531` e `/oab/22531` dão no mesmo).
+
+| Parâmetro | Padrão | Para que serve |
+| --- | --- | --- |
+| `vigentes` | `false` | `true` devolve só as comissões em que a pessoa está hoje |
+
+Aqui o padrão é o **contrário** do endpoint de membros: devolve o histórico
+completo, porque a pergunta costuma ser "por onde essa pessoa passou". As
+comissões atuais vêm primeiro, depois as encerradas, da mais recente para a mais
+antiga.
+
+Esta resposta **não é paginada** — ninguém participa de comissões o bastante
+para isso (o recordista da base tem 6).
+
+```bash
+curl "http://localhost:5500/api/pessoas/oab/22531/comissoes"
+```
 
 ```json
 {
   "success": true,
-  "message": "Registros encontrados.",
-  "data": [ ... ],
-  "meta": {
-    "pagina": 1,
-    "limite": 20,
-    "total": 137,
-    "totalPaginas": 7,
-    "temProxima": true,
-    "temAnterior": false
-  },
-  "timestamp": "2026-09-01T12:00:00.000Z"
+  "message": "Comissões da pessoa encontradas.",
+  "data": {
+    "pessoa": {
+      "id": 54164,
+      "nome": "ORLEY SILVA LOUREIRO",
+      "registroConselho": "22531"
+    },
+    "comissoes": [
+      {
+        "id": 2797,
+        "comissao": {
+          "id": 5,
+          "descricao": "COMISSÃO DE ASSUNTOS TRIBUTÁRIOS",
+          "sigla": "CATRI"
+        },
+        "cargo": {
+          "id": 32,
+          "descricao": "Membro de Comissão"
+        },
+        "cargoComplemento": "Membro de Comissão COMISSÃO DE ASSUNTOS TRIBUTÁRIOS",
+        "dataInicio": "2022-03-10T00:00:00.000Z",
+        "dataFim": null,
+        "vigente": true
+      }
+    ]
+  }
 }
 ```
 
-**Erro**
+Uma pessoa que existe no cadastro mas nunca participou de comissão devolve
+`200` com `"comissoes": []` — e não um erro.
+
+---
+
+## Como são as respostas
+
+Toda resposta é JSON e tem sempre o mesmo esqueleto, então dá para tratar tudo
+de um jeito só.
+
+**Deu certo:**
+
+```json
+{
+  "success": true,
+  "message": "Comissões encontradas.",
+  "data": "...",
+  "timestamp": "2026-09-02T20:16:53.907Z"
+}
+```
+
+**Deu errado:**
 
 ```json
 {
   "success": false,
   "message": "Comissão não encontrada.",
   "code": "NOT_FOUND",
-  "timestamp": "2026-09-01T12:00:00.000Z"
+  "timestamp": "2026-09-02T20:16:53.907Z"
 }
 ```
 
-O frontend deve reagir ao campo `code` (estável), nunca ao texto de `message`.
+Cheque `success` — ou o status HTTP — antes de ler `data`.
 
-Métodos disponíveis em `Response`: `success`, `paginado`, `created`,
-`noContent`, `error`, `badRequest`, `unauthorized`, `forbidden`, `notFound`,
-`conflict`.
+**Listas paginadas** trazem um bloco `meta` a mais:
+
+```json
+"meta": {
+  "pagina": 1,
+  "limite": 20,
+  "total": 98,
+  "totalPaginas": 5,
+  "temProxima": true,
+  "temAnterior": false
+}
+```
+
+`temProxima` evita conta na sua ponta: enquanto for `true`, peça a próxima
+página com `?page=2`, `?page=3`…
 
 ---
 
-## Tratamento de erros
+## Erros
 
-Controllers **não têm `try/catch`**. O `asyncHandler` encaminha qualquer
-rejeição ao `errorHandler`.
+| Status | `code` | O que houve | O que fazer |
+| --- | --- | --- | --- |
+| `400` | `VALIDATION_ERROR` | Parâmetro fora do formato (letra onde se espera número, `limit` acima de 100, busca com menos de 3 letras) | Veja a lista `errors` da resposta: ela diz o campo e o motivo |
+| `404` | `NOT_FOUND` | A comissão ou a pessoa não existe | Confira o ID ou o número da OAB |
+| `409` | `CONFLICT` | O número da OAB está em mais de um cadastro (raro, ver abaixo) | Use o `pessoas` da resposta para escolher e repita por ID |
+| `429` | `TOO_MANY_REQUESTS` | Excedeu 300 requisições em 15 minutos, pelo mesmo IP | Espere e reduza o ritmo |
+| `503` | — | Banco de dados indisponível | Tente de novo; se persistir, avise a TI |
 
-- **Erro esperado** (regra de negócio): lance `AppError` no service.
-  A mensagem chega ao cliente com o status e o `code` corretos.
+O `400` detalha o que reprovou:
 
-  ```js
-  throw AppError.naoEncontrado('Comissão não encontrada.');
-  throw AppError.conflito('Este advogado já é membro desta comissão.');
-  throw new AppError('Prazo de inscrição encerrado.', 422, 'PRAZO_ENCERRADO');
-  ```
+```json
+{
+  "success": false,
+  "message": "Erro de validação.",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "campo": "limit",
+      "valor": "500",
+      "mensagem": "O limite deve estar entre 1 e 100.",
+      "local": "query"
+    }
+  ]
+}
+```
 
-- **Erro inesperado** (bug, banco fora): deixe subir. O `errorHandler` registra
-  o stack e devolve 500 com mensagem genérica, sem vazar nome de tabela,
-  servidor ou credencial.
-
-O `errorHandler` ainda traduz automaticamente erros conhecidos: JSON malformado
-(400), payload grande demais (422), violação de chave única do SQL Server
-(409), violação de FK (400) e timeout de conexão (503).
+Trate pelo campo `code`, nunca pelo texto de `message` — o texto pode ser
+reescrito, o `code` não muda.
 
 ---
 
-## Acesso ao banco
+## Coisas que é bom saber
 
-Use `this.db` dentro de um service (herdado de `BaseService`):
+**Quem está "vigente".** Um membro é considerado em exercício quando não tem
+data de saída (`dataFim: null`) ou quando a data de saída ainda está no futuro.
+O campo `vigente` já entrega isso resolvido.
 
-```js
-// Lista de linhas
-const linhas = await this.db.query(sql, { id: 1 });
+**Os padrões são diferentes nos dois lados**, de propósito:
 
-// Primeira linha ou null
-const linha = await this.db.queryOne(sql, { id: 1 });
+| Endpoint | Padrão | Por quê |
+| --- | --- | --- |
+| `/comissoes/{id}/membros` | só os **atuais** | A pergunta normal é "quem está na comissão hoje" |
+| `/pessoas/.../comissoes` | **histórico completo** | A pergunta normal é "por onde essa pessoa passou" |
 
-// Resultado completo (rowsAffected, múltiplos recordsets)
-const resultado = await this.db.execute(sql, { id: 1 });
-```
+Em qualquer um dos dois, `?vigentes=true` ou `?vigentes=false` manda no
+resultado.
 
-Os parâmetros são **tipados automaticamente** a partir do tipo JavaScript
-(`number` → Int/BigInt/Decimal, `boolean` → Bit, `string` → NVarChar, `Date` →
-DateTime, `Buffer` → VarBinary). Isso evita o clássico
-`Error converting data type nvarchar to bigint`.
+### Os cargos
 
-**Nunca concatene valor vindo do cliente na string SQL** — use sempre
-parâmetros nomeados (`@id`).
+O `cargo.descricao` vem pronto na resposta; a tabela abaixo serve para quando
+você quiser **filtrar** por cargo com `?cargo=`.
 
-**Transações:**
+| ID | Cargo |
+| --- | --- |
+| `54` | Presidente de Comissão |
+| `55` | Vice-Presidente de Comissão |
+| `56` | Secretário(a) Geral de Comissão |
+| `57` | Secretário(a) Geral Adjunto de Comissão |
+| `38` | Conselheiro(a) Estadual |
+| `33` | Vice-presidente de Seccional |
+| `72` | Relator - Pleno |
+| `32` | Membro de Comissão |
+| `59` | Membro |
 
-```js
-await this.db.transaction(async (exec) => {
-  const r = await exec('SELECT NEXT VALUE FOR SEQ_Comissao AS nextId');
-  const id = Number(r.recordset[0].nextId);
-
-  await exec('INSERT INTO Comissao (ID, Nome) VALUES (@id, @nome)', { id, nome });
-
-  return id;
-});
-```
-
-Dentro do callback use **sempre `exec`**. Chamar `this.db.query` ali pega outra
-conexão do pool: a operação fica fora da transação e ainda pode travar em
-deadlock contra os locks dela.
-
-Sobre **IDs**: o banco é compartilhado com o sistema legado. Gere IDs pela
-`SEQUENCE` correspondente, nunca por `MAX(ID)+1` — isso deixa o contador parado
-enquanto a tabela avança e faz o legado gravar IDs já usados.
+Um cargo novo pode aparecer com o tempo: a API continua devolvendo o nome dele
+normalmente, então não trave sua tela nessa lista.
 
 ---
 
-## Autenticação
+## Perguntas frequentes
 
-Duas formas, aceitas nesta ordem:
+**Como acho o ID de uma comissão?**
+Busque pelo nome: `GET /api/comissoes?q=tributário`. O `id` do resultado é o que
+os outros endpoints pedem.
 
-| Forma   | Header                          | Para quem                       |
-| ------- | ------------------------------- | ------------------------------- |
-| JWT     | `Authorization: Bearer <token>` | Frontend / portal               |
-| API Key | `x-api-key: <chave>`            | Chamadas entre APIs internas    |
+**Preciso do ID interno da pessoa?**
+Não. Use `GET /api/pessoas/oab/{numero}/comissoes` com o número da OAB.
 
-O JWT é emitido pela **api-register-login** e assinado em HS256. O `JWT_SECRET`
-desta API **deve ser idêntico** ao dela, senão todo token é rejeitado com 401.
+**Por que uma comissão diz `totalMembrosVigentes: 0`?**
+Ela existe no cadastro, mas ninguém está vinculado a ela no momento. Chamar
+`/membros` com `vigentes=false` mostra se já houve alguém.
 
-Nas rotas:
+**A comissão existe, mas `/membros` veio vazio. É erro?**
+Não. Comissão inexistente devolve `404`; lista vazia com `200` quer dizer
+"existe e está sem membros" — e as duas coisas são distinguíveis de propósito.
 
-```js
-const { autenticar, autenticarOpcional } = require('../middlewares/authMiddleware');
+**Recebi `409` consultando por OAB. O que é isso?**
+O cadastro antigo tem alguns números de inscrição repetidos em pessoas
+diferentes (normalmente uma sociedade de advogados e um advogado). Quando os
+dois participam de comissões, a API não adivinha qual você quer: ela devolve a
+lista em `pessoas` para você escolher e repetir a consulta por
+`/api/pessoas/{id}/comissoes`. Na base de hoje isso não acontece com nenhum
+membro de comissão.
 
-router.post('/', autenticar, ...);          // exige credencial válida
-router.get('/', autenticarOpcional, ...);   // preenche req.user se houver, nunca bloqueia
-```
+**Por que `registroConselho` vem `null` para alguns membros?**
+Nem todo membro é advogado inscrito — há convidados e representantes de outras
+instituições. Cerca de 97% dos membros têm o número preenchido.
 
-Dentro do controller ficam disponíveis `req.user`, `req.userId` e
-`req.tipoAutenticacao`.
+**As datas vêm em que fuso?**
+Em UTC, no formato ISO (`2022-03-10T00:00:00.000Z`). No cadastro só a data
+importa; a hora é sempre zero.
 
-Se a API for **totalmente pública**, basta não usar o middleware — deixe
-`JWT_SECRET` e `ALLOWED_API_KEYS` vazios.
-
----
-
-## Paginação
-
-Toda listagem que pode crescer deve ser paginada.
-
-No controller:
-
-```js
-const { extrairPaginacao } = require('../utils/pagination');
-const paginacao = extrairPaginacao(req.query);   // { pagina, limite, offset }
-```
-
-No service, `OFFSET`/`FETCH` (exige `ORDER BY`) e `COUNT` com o mesmo `WHERE`:
-
-```js
-const [linhas, contagem] = await Promise.all([
-  this.db.query(queries.LISTAR, { ...filtros, offset: paginacao.offset, limite: paginacao.limite }),
-  this.db.queryOne(queries.CONTAR, filtros)
-]);
-
-return montarResultadoPaginado(linhas.map(l => this.mapear(l)), Number(contagem.total), paginacao);
-```
-
-Query string: `?page=2&limit=50`. O limite máximo é 100 (`PAGINACAO.LIMITE_MAXIMO`).
-
-Ao buscar por texto, passe o termo por `escaparLike()` — sem isso um `?q=%`
-provoca varredura de tabela inteira.
-
----
-
-## Logs
-
-```
-logs/
-├── application/2026-09-01-application.log   tudo
-├── error/2026-09-01-error.log               só erros
-└── exceptions/2026-09-01-exceptions.log     uncaughtException / unhandledRejection
-```
-
-Rotação diária, compactação em `.gz` e retenção de 30 dias (`LOG_MAX_FILES`).
-
-Dentro de um service, use os métodos herdados — eles prefixam a mensagem com o
-nome do service, o que acelera muito o rastreio em produção:
-
-```js
-this.logInfo('Membros listados', { comissaoId, total: linhas.length });
-this.logWarn('Comissão sem membros', { comissaoId });
-this.logError('Falha ao gravar membro', error, { comissaoId });
-```
-
-Nunca registre senha, token ou o CPF completo em log.
-
----
-
-## Deploy
-
-```bash
-# no servidor
-git pull
-npm ci --omit=dev
-
-# primeira vez
-pm2 start ecosystem.config.js --env production
-pm2 save
-
-# atualizações (sem downtime)
-pm2 reload ecosystem.config.js --env production
-```
-
-`--env production` define `NODE_ENV=production` e `APP_ENV=producao`, fazendo a
-API carregar o `.env.producao`.
-
-Roda em **cluster com 2 instâncias**. Consequência prática: qualquer estado em
-memória (cache, contador, sessão) deixa de ser confiável, pois cada processo tem
-o seu. Numeração sequencial precisa ser resolvida no banco, com `SEQUENCE` ou
-lock (`WITH (UPDLOCK, HOLDLOCK)`).
-
----
-
-## Convenções
-
-- **Idioma**: código, comentários e mensagens em português; nomes de colunas
-  mantêm o PascalCase do banco legado, mas a API sempre expõe camelCase.
-- **Módulos**: CommonJS (`require`/`module.exports`).
-- **Indentação**: 2 espaços.
-- **Nomes de arquivo**: `PascalCase` para classes (`ComissaoService.js`),
-  `camelCase` para os demais (`comissaoRoutes.js`, `comissaoQueries.js`).
-- **Services e controllers** são exportados como **instância única**
-  (`module.exports = new ComissaoService()`).
-- **Comentários** explicam o *porquê*, não o *o quê*. Decisão não óbvia (hint de
-  lock, workaround do legado, ordem que importa) merece comentário; getter
-  trivial não.
-- Ao adicionar uma variável de ambiente: declare em `src/config/env.js` **e**
-  documente em `.env.example`.
+**Tem limite de uso?**
+300 requisições a cada 15 minutos por IP. Passando disso vem `429` — os
+cabeçalhos `RateLimit-*` da resposta dizem quanto ainda resta.

@@ -5,14 +5,14 @@
 // Atualizar:  pm2 reload ecosystem.config.js --env production   (sem downtime)
 // Persistir:  pm2 save
 //
-// Ao copiar este boilerplate, troque `name` pelo nome da API nova — é ele que
-// aparece no `pm2 list` e o que distingue os processos no servidor.
+// `name` é o que aparece no `pm2 list` e o que distingue os processos no
+// servidor — não repita o de outra API.
 // =============================================================================
 
 module.exports = {
   apps: [
     {
-      name: 'api-boilerplate-oabms',
+      name: 'api-comissoes-oabms',
       script: './server.js',
 
       // Duas instâncias em cluster: aproveita mais de um núcleo e permite

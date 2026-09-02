@@ -77,7 +77,7 @@ const env = {
   porta: toInt(process.env.PORT, 3000),
 
   // Nome e versão aparecem no log de boot, na rota `/` e no health check.
-  nomeApi: process.env.API_NAME || 'api-boilerplate',
+  nomeApi: process.env.API_NAME || 'api-comissoes',
   versaoApi: process.env.npm_package_version || '1.0.0',
 
   // Prefixo de todas as rotas de negócio (ex: /api/comissoes).

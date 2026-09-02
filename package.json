@@ -1,7 +1,7 @@
 {
-  "name": "api-boilerplate",
+  "name": "api-comissoes",
   "version": "1.0.0",
-  "description": "Ponto de partida padrão para as APIs Node.js + SQL Server da OAB/MS",
+  "description": "API de consulta das comissões da OAB/MS: composição de cada comissão e vínculos por pessoa",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "keywords": [
     "api",
-    "boilerplate",
+    "comissoes",
     "express",
     "sqlserver",
     "oabms"

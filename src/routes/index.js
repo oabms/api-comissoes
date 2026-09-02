@@ -3,7 +3,8 @@ const express = require('express');
 const env = require('../config/env');
 
 const healthRoutes = require('./healthRoutes');
-const exemploRoutes = require('./exemploRoutes');
+const comissaoRoutes = require('./comissaoRoutes');
+const pessoaRoutes = require('./pessoaRoutes');
 
 // =============================================================================
 // ÍNDICE DE ROTAS
@@ -24,15 +25,20 @@ const ENDPOINTS = {
   health: {
     'GET /api/health': 'Status da API e do banco de dados'
   },
-  exemplos: {
-    'GET  /api/exemplos': 'Lista paginada (?q=&ativos=&page=&limit=)',
-    'GET  /api/exemplos/:id': 'Detalhe de um registro',
-    'POST /api/exemplos': 'Cria um registro (requer autenticação)'
+  comissoes: {
+    'GET /api/comissoes': 'Catálogo de comissões (?q=&page=&limit=)',
+    'GET /api/comissoes/:id': 'Detalhe de uma comissão',
+    'GET /api/comissoes/:id/membros': 'Membros da comissão (?vigentes=&cargo=&q=&page=&limit=)'
+  },
+  pessoas: {
+    'GET /api/pessoas/oab/:registro/comissoes': 'Comissões da pessoa pelo número da OAB (?vigentes=)',
+    'GET /api/pessoas/:id/comissoes': 'Comissões da pessoa pelo ID do cadastro (?vigentes=)'
   }
 };
 
 router.use('/health', healthRoutes);
-router.use('/exemplos', exemploRoutes);
+router.use('/comissoes', comissaoRoutes);
+router.use('/pessoas', pessoaRoutes);
 
 router.get('/', (req, res) => {
   res.json({
