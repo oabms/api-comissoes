@@ -1,4 +1,8 @@
-const { ORDEM_CARGO } = require('../constants/comissaoConstants');
+const {
+  ORDEM_CARGO,
+  PREFIXO_DESCRICAO_COMISSAO,
+  DESCRICOES_IGNORADAS
+} = require('../constants/comissaoConstants');
 
 // =============================================================================
 // QUERIES DO MÓDULO COMISSÃO
@@ -48,11 +52,48 @@ const ORDENACAO_POR_CARGO = `
     END`;
 
 /**
+ * Recorte da tabela `Comissao`: o que esta API considera uma comissão.
+ *
+ * A tabela mistura comissões com a estrutura administrativa do conselho
+ * (gabinetes, câmaras, secretarias, setores da CAAMS) e `TipoComissao` está
+ * nula em todas as linhas, então o critério é o nome — ver
+ * PREFIXO_DESCRICAO_COMISSAO em constants/comissaoConstants.js.
+ *
+ * Vale para TODA consulta que toca `Comissao`, inclusive a busca por ID e os
+ * vínculos de uma pessoa: uma estrutura administrativa não existe do ponto de
+ * vista desta API, então responde 404 e não aparece na ficha de ninguém.
+ *
+ * O prefixo é literal e sem acento — seguro de interpolar. Já as descrições
+ * ignoradas vão como parâmetros nomeados (@descricaoIgnorada0, ...): além da
+ * regra do projeto, isso evita que o acento de "COMISSÃO DESATIVADA" dependa da
+ * codificação do arquivo ou do collation do servidor.
+ */
+const PLACEHOLDERS_IGNORADAS = DESCRICOES_IGNORADAS
+  .map((descricao, indice) => `@descricaoIgnorada${indice}`)
+  .join(', ');
+
+const E_UMA_COMISSAO = `c.Descricao LIKE '${PREFIXO_DESCRICAO_COMISSAO}%'`
+  // Guarda contra a lista vazia: `NOT IN ()` não é SQL válido.
+  + (DESCRICOES_IGNORADAS.length ? `\n      AND c.Descricao NOT IN (${PLACEHOLDERS_IGNORADAS})` : '');
+
+/**
+ * Valores dos @descricaoIgnoradaN, para o service espalhar nos params de toda
+ * query que use E_UMA_COMISSAO. Fica aqui, junto dos placeholders, para que os
+ * dois não saiam de sincronia.
+ *
+ * @returns {Object} { descricaoIgnorada0: 'COMISSÃO DESATIVADA', ... }
+ */
+const paramsDescricoesIgnoradas = () => Object.fromEntries(
+  DESCRICOES_IGNORADAS.map((descricao, indice) => [`descricaoIgnorada${indice}`, descricao])
+);
+
+/**
  * WHERE compartilhado por LISTAR_COMISSOES e CONTAR_COMISSOES.
  * Mantenha os dois sincronizados alterando apenas esta constante.
  */
 const FILTRO_COMISSOES = `
-    WHERE (@termo IS NULL OR c.Descricao LIKE '%' + @termo + '%')`;
+    WHERE ${E_UMA_COMISSAO}
+      AND (@termo IS NULL OR c.Descricao LIKE '%' + @termo + '%')`;
 
 /**
  * WHERE compartilhado por LISTAR_MEMBROS e CONTAR_MEMBROS.
@@ -64,6 +105,8 @@ const FILTRO_MEMBROS = `
       AND (@termo IS NULL OR p.Nome LIKE '%' + @termo + '%')`;
 
 module.exports = {
+
+  paramsDescricoesIgnoradas,
 
   // ---------------------------------------------------------------------------
   // COMISSÕES
@@ -119,6 +162,7 @@ module.exports = {
         )
     FROM Comissao c
     WHERE c.ID = @id
+      AND ${E_UMA_COMISSAO}
   `,
 
   // ---------------------------------------------------------------------------
@@ -192,6 +236,7 @@ module.exports = {
     INNER JOIN Comissao c ON c.ID = h.Comissao
     LEFT  JOIN Cargo ca ON ca.ID = h.Cargo
     WHERE h.Pessoa = @pessoaId
+      AND ${E_UMA_COMISSAO}
       AND (@somenteVigentes = 0 OR ${VIGENTE})
     ORDER BY
         CASE WHEN ${VIGENTE} THEN 0 ELSE 1 END,
@@ -238,8 +283,9 @@ module.exports = {
         totalVinculosComissao = (
             SELECT COUNT(1)
             FROM HistoricoCargo h
+            INNER JOIN Comissao c ON c.ID = h.Comissao
             WHERE h.Pessoa = p.ID
-              AND h.Comissao IS NOT NULL
+              AND ${E_UMA_COMISSAO}
         )
     FROM Pessoa p
     WHERE TRY_CAST(NULLIF(LTRIM(RTRIM(p.RegistroConselho)), '') AS BIGINT) = @registro

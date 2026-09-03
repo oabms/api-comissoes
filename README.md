@@ -10,6 +10,12 @@ Responde a duas perguntas:
 - **De quais comissões um advogado participa?** — com o cargo, a data de
   entrada e, se já saiu, a data de saída.
 
+A API trabalha **só com comissões** — as 89 do tipo "COMISSÃO DA MULHER
+ADVOGADA", "COMISSÃO DE DIREITO PENAL". Estruturas administrativas do conselho
+e da CAAMS (câmaras seccionais, turmas do Tribunal de Ética, gabinetes,
+assessorias, secretarias) ficam de fora, mesmo estando na mesma tabela do
+sistema antigo. Ver [o que entra e o que não entra](#o-que-entra-e-o-que-não-entra).
+
 > Documentação técnica do projeto (instalação, arquitetura, deploy):
 > [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md).
 
@@ -37,12 +43,12 @@ funcionam com um `GET` simples.
 
 ```bash
 # homologação
-curl http://localhost:5500/api/comissoes?q=jovem
+curl http://172.29.7.14:47159/api/comissoes?q=jovem
 ```
 
 | Ambiente | Endereço base |
 | --- | --- |
-| Homologação | `http://<servidor-de-homologacao>:5500/api` |
+| Homologação | `http://172.29.7.14:47159/api` |
 | Produção | `http://<servidor-de-producao>:5500/api` |
 
 Confirme com a TI os endereços dos dois ambientes antes de publicar.
@@ -82,7 +88,7 @@ pedem.
 | `limit` | `20` | Quantos itens por página (máximo 100) |
 
 ```bash
-curl "http://localhost:5500/api/comissoes?q=penal&limit=3"
+curl "http://172.29.7.14:47159/api/comissoes?q=penal&limit=3"
 ```
 
 ```json
@@ -125,7 +131,7 @@ GET /api/comissoes/{id}
 Os mesmos campos da listagem, para uma comissão só.
 
 ```bash
-curl "http://localhost:5500/api/comissoes/103"
+curl "http://172.29.7.14:47159/api/comissoes/103"
 ```
 
 ---
@@ -152,7 +158,7 @@ secretário-geral, secretário-geral adjunto e, por último, os membros — cada
 faixa em ordem alfabética. Não precisa reordenar do seu lado.
 
 ```bash
-curl "http://localhost:5500/api/comissoes/103/membros"
+curl "http://172.29.7.14:47159/api/comissoes/103/membros"
 ```
 
 ```json
@@ -228,7 +234,7 @@ Esta resposta **não é paginada** — ninguém participa de comissões o bastan
 para isso (o recordista da base tem 6).
 
 ```bash
-curl "http://localhost:5500/api/pessoas/oab/22531/comissoes"
+curl "http://172.29.7.14:47159/api/pessoas/oab/22531/comissoes"
 ```
 
 ```json
@@ -350,6 +356,31 @@ reescrito, o `code` não muda.
 
 ## Coisas que é bom saber
 
+### O que entra e o que não entra
+
+O sistema antigo guarda, na mesma tabela, as comissões e a estrutura
+administrativa do conselho e da CAAMS. Esta API mostra **só as comissões**:
+
+| Entra (89 registros) | Não entra |
+| --- | --- |
+| COMISSÃO DA MULHER ADVOGADA | 1ª CÂMARA SECCIONAL |
+| COMISSÃO DA ADVOCACIA CRIMINAL | ASSESSORIA ADMINISTRATIVA CAAMS |
+| COMISSÃO ESPECIAL DE ENERGIA | GABINETE DO DIRETOR SECRETÁRIO GERAL |
+| COMISSÃO TEMPORÁRIA DE ACESSIBILIDADE | TRIBUNAL DE ÉTICA E DISCIPLINA |
+| COMISSÃO PERMANENTE DE ENSINO JURÍDICO | CORRESPONDENTE BANCÁRIO, PROTOCOLO, CONTABILIDADE… |
+
+O critério é o nome começar com "COMISSÃO". Ficam de fora também os registros
+zerados que o sistema antigo deixa para trás — 8 linhas chamadas "COMISSÃO
+DESATIVADA" e uma "COMISSÃO TESTE", nenhuma com membro.
+
+Isso vale para **todos** os endpoints, não só para a busca:
+
+- um ID que não seja de comissão responde `404`, como se não existisse;
+- na ficha de uma pessoa, aparecem apenas as comissões — quem também tem
+  cadeira em um gabinete ou câmara não vê esse vínculo aqui.
+
+### Vigência e os padrões de cada endpoint
+
 **Quem está "vigente".** Um membro é considerado em exercício quando não tem
 data de saída (`dataFim: null`) ou quando a data de saída ainda está no futuro.
 O campo `vigente` já entrega isso resolvido.
@@ -388,6 +419,16 @@ normalmente, então não trave sua tela nessa lista.
 
 ## Perguntas frequentes
 
+**Busquei por "câmara", "gabinete" ou "assessoria" e não veio nada. Sumiu?**
+Não: essas são estruturas administrativas do conselho, e a API só trabalha com
+comissões. Se você precisa da composição de uma delas, fale com a TI — é outra
+consulta, fora do escopo desta API.
+
+**Uma comissão que eu conheço não aparece na listagem. Por quê?**
+Confira o nome no sistema: entram os registros cujo nome começa com "COMISSÃO".
+Se o nome estiver cadastrado de outro jeito, a comissão fica de fora — avise a
+TI para corrigir o cadastro.
+
 **Como acho o ID de uma comissão?**
 Busque pelo nome: `GET /api/comissoes?q=tributário`. O `id` do resultado é o que
 os outros endpoints pedem.
@@ -413,7 +454,7 @@ membro de comissão.
 
 **Por que `registroConselho` vem `null` para alguns membros?**
 Nem todo membro é advogado inscrito — há convidados e representantes de outras
-instituições. Cerca de 97% dos membros têm o número preenchido.
+instituições. Hoje, 799 dos 817 membros têm o número preenchido (98%).
 
 **As datas vêm em que fuso?**
 Em UTC, no formato ISO (`2022-03-10T00:00:00.000Z`). No cadastro só a data

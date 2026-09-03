@@ -55,7 +55,28 @@ o código já trata:
    `comissaoConstants.js`; um cargo novo continua funcionando (o nome vem do
    JOIN), apenas cai no fim da ordenação até ser acrescentado em `ORDEM_CARGO`;
 
-4. **`Pessoa.RegistroConselho` não é único.** É varchar e se repete em 167
+4. **A tabela `Comissao` não guarda só comissões.** Das 167 linhas, 67 são
+   estrutura administrativa do conselho e da CAAMS (câmaras seccionais, turmas
+   do Tribunal de Ética, gabinetes, assessorias, contabilidade, protocolo) e 9
+   são lixo de cadastro — 8 linhas idênticas de "COMISSÃO DESATIVADA" e uma
+   "COMISSÃO TESTE". Sobram **89 comissões de verdade**, com 1.049 vínculos
+   (1.043 vigentes).
+
+   A coluna `TipoComissao` existe e serviria para separar isso, mas está **nula
+   nas 167 linhas**. Restou o nome como critério, e ele é confiável: toda
+   comissão começa com "COMISSÃO"/"COMISSAO" — o prefixo é comparado cortado em
+   `COMISS` porque há registro gravado sem acento, e cortar antes do acento faz
+   os dois casarem sem depender do collation (`SQL_Latin1_General_CP1_CI_AS`,
+   *accent-sensitive*).
+
+   É prefixo, não "contém": "COORDENADORIA DAS COMISSÕES" e "SECRETARIA DAS
+   COMISSÕES" têm a palavra no nome mas são os setores que administram as
+   comissões. O recorte está em `E_UMA_COMISSAO` (queries) e vale para **toda**
+   consulta que toca `Comissao` — inclusive a busca por ID, que responde 404
+   para uma estrutura administrativa, e a ficha de uma pessoa, que não mostra
+   vínculos fora do recorte;
+
+5. **`Pessoa.RegistroConselho` não é único.** É varchar e se repete em 167
    números da base (em geral uma sociedade de advogados e um advogado com o
    mesmo número em séries diferentes). Por isso a busca por OAB devolve LISTA e
    quem decide qual cadastro usar é `resolverCadastroUnico`, no service: um só

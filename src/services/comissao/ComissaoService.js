@@ -118,7 +118,8 @@ class ComissaoService extends BaseService {
   async listar(filtros = {}, paginacao) {
     const params = {
       // Neutraliza os curingas % e _ digitados pelo usuário.
-      termo: filtros.termo ? escaparLike(filtros.termo) : null
+      termo: filtros.termo ? escaparLike(filtros.termo) : null,
+      ...queries.paramsDescricoesIgnoradas()
     };
 
     const [linhas, contagem] = await Promise.all([
@@ -139,9 +140,16 @@ class ComissaoService extends BaseService {
 
   /**
    * Detalhe de uma comissão. Lança 404 se não existir.
+   *
+   * "Não existir" inclui os IDs que existem na tabela mas são estrutura
+   * administrativa do conselho (gabinete, câmara, secretaria) — para esta API
+   * eles simplesmente não são comissões. Ver E_UMA_COMISSAO nas queries.
    */
   async buscarPorId(id) {
-    const linha = await this.db.queryOne(queries.BUSCAR_COMISSAO_POR_ID, { id: Number(id) });
+    const linha = await this.db.queryOne(queries.BUSCAR_COMISSAO_POR_ID, {
+      id: Number(id),
+      ...queries.paramsDescricoesIgnoradas()
+    });
 
     if (!linha) {
       throw AppError.naoEncontrado('Comissão não encontrada.');
@@ -228,7 +236,10 @@ class ComissaoService extends BaseService {
   async listarComissoesPorRegistroConselho(registro, filtros = {}) {
     const candidatos = await this.db.query(
       queries.BUSCAR_PESSOAS_POR_REGISTRO_CONSELHO,
-      { registro: Number(registro) }
+      {
+        registro: Number(registro),
+        ...queries.paramsDescricoesIgnoradas()
+      }
     );
 
     if (!candidatos.length) {
@@ -311,7 +322,8 @@ class ComissaoService extends BaseService {
   async montarComissoesDaPessoa(pessoa, filtros = {}) {
     const linhas = await this.db.query(queries.LISTAR_COMISSOES_DA_PESSOA, {
       pessoaId: Number(pessoa.ID),
-      somenteVigentes: filtros.somenteVigentes ? 1 : 0
+      somenteVigentes: filtros.somenteVigentes ? 1 : 0,
+      ...queries.paramsDescricoesIgnoradas()
     });
 
     return {
