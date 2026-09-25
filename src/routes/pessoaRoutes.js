@@ -15,6 +15,9 @@ const asyncHandler = require('../utils/asyncHandler');
 // A rota de OAB é declarada primeiro por clareza; as duas não competem entre si
 // porque têm número de segmentos diferente ('/oab/29739/comissoes' contra
 // '/79394/comissoes').
+//
+// A autenticação por `x-api-key` é exigida no `router.use` do índice
+// (src/routes/index.js) e vale para todas as rotas deste arquivo.
 // =============================================================================
 
 const router = express.Router();

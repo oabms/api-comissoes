@@ -24,6 +24,11 @@ const { ERROR_CODES } = require('../utils/constants');
 // Uso nas rotas:
 //   router.get('/', autenticar, asyncHandler(Controller.listar));       // exige credencial
 //   router.get('/', autenticarOpcional, asyncHandler(Controller.listar)); // usa se houver
+//
+// Nesta API o que está em uso é `autenticarApiKey` (aplicado em bloco em
+// src/routes/index.js): só há consumidores server-to-server, e aceitar JWT
+// ampliaria a superfície sem necessidade. O caminho JWT fica disponível para
+// quando o portal passar a consumir a API direto do navegador.
 // =============================================================================
 
 /**
@@ -165,6 +170,66 @@ const autenticar = (req, res, next) => {
 };
 
 /**
+ * Autenticação por API KEY, exclusivamente.
+ *
+ * Exige `x-api-key` com uma das chaves de ALLOWED_API_KEYS. Um `Authorization:
+ * Bearer <token>` válido NÃO abre a rota — é o modo usado pelas rotas de
+ * negócio desta API.
+ */
+const autenticarApiKey = (req, res, next) => {
+  const registrarFalha = (message, code) => {
+    logger.warn(`Falha de autenticação: ${message}`, {
+      ip: (req.ip || '').replace('::ffff:', ''),
+      path: req.originalUrl,
+      code
+    });
+  };
+
+  // Sem chave configurada nenhuma requisição poderia ser aceita. Isso é barrado
+  // no boot (src/config/env.js); a guarda aqui cobre o caso de a lista ser
+  // esvaziada em tempo de execução e evita responder 401 por um erro que é do
+  // servidor, não do cliente.
+  if (!env.apiKeys.length) {
+    logger.error('ALLOWED_API_KEYS não configurado — rota autenticada é inacessível');
+
+    return Response.error(
+      res,
+      'Configuração de autenticação ausente no servidor.',
+      500,
+      ERROR_CODES.AUTH_NOT_CONFIGURED
+    );
+  }
+
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) {
+    registrarFalha('Chave de API não fornecida.', ERROR_CODES.NO_TOKEN);
+
+    return Response.unauthorized(
+      res,
+      'Autenticação não fornecida (envie o header x-api-key).',
+      ERROR_CODES.NO_TOKEN
+    );
+  }
+
+  const autorizada = env.apiKeys.some(chave => compararSeguro(chave, apiKey));
+
+  if (!autorizada) {
+    registrarFalha('Chave de API inválida ou não autorizada.', ERROR_CODES.INVALID_API_KEY);
+
+    return Response.unauthorized(
+      res,
+      'Chave de API inválida ou não autorizada.',
+      ERROR_CODES.INVALID_API_KEY
+    );
+  }
+
+  req.tipoAutenticacao = 'api-key';
+
+  return next();
+};
+
+/**
  * Autenticação OPCIONAL. Preenche `req.user` quando houver credencial válida,
  * mas nunca bloqueia. Útil em rotas públicas que devolvem dados extras para
  * usuários logados.
@@ -176,6 +241,7 @@ const autenticarOpcional = (req, res, next) => {
 
 module.exports = {
   autenticar,
+  autenticarApiKey,
   autenticarOpcional,
   extrairToken
 };

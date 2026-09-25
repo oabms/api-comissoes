@@ -11,9 +11,9 @@ const asyncHandler = require('../utils/asyncHandler');
 // =============================================================================
 // Ordem dos middlewares: [regras do validator] -> validate -> asyncHandler.
 //
-// Todas as rotas são públicas e de leitura. Se um dia a API passar a exigir
-// token, basta acrescentar `autenticar` antes do validator em cada rota
-// (src/middlewares/authMiddleware.js).
+// A autenticação NÃO aparece aqui: o `x-api-key` é exigido no `router.use` do
+// índice (src/routes/index.js), de modo que vale para todas as rotas deste
+// arquivo, inclusive as que forem criadas depois.
 // =============================================================================
 
 const router = express.Router();

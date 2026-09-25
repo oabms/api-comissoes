@@ -110,13 +110,22 @@ const env = {
   // ---------------------------------------------------------------------------
   // Autenticação
   // ---------------------------------------------------------------------------
-  // O middleware de auth aceita dois caminhos (ver src/middlewares/authMiddleware.js):
-  //   - JWT emitido pela api-register-login (Authorization: Bearer <token>)
-  //   - API Key para chamadas server-to-server (header x-api-key)
-  // Deixe ambos vazios se a API for pública.
+  // Esta API é protegida por API Key: toda rota de negócio exige o header
+  // `x-api-key` com uma das chaves listadas abaixo (ver
+  // src/middlewares/authMiddleware.js).
+  //
+  // ALLOWED_API_KEYS aceita várias chaves separadas por vírgula, o que permite
+  // rotacionar a chave sem derrubar o consumidor: publica-se a nova, os clientes
+  // migram, e só então a antiga sai da lista.
+  //
+  // ALLOWED_API_KEY (singular) é aceito como sinônimo, para o caso de o .env do
+  // servidor estar escrito assim.
   jwtSecret: process.env.JWT_SECRET || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '24h',
-  apiKeys: toList(process.env.ALLOWED_API_KEYS),
+  apiKeys: [
+    ...toList(process.env.ALLOWED_API_KEYS),
+    ...toList(process.env.ALLOWED_API_KEY)
+  ],
 
   // ---------------------------------------------------------------------------
   // Rate limit padrão (por IP)
@@ -135,5 +144,18 @@ const env = {
     tamanhoMaximo: process.env.LOG_MAX_SIZE || '20m'
   }
 };
+
+// -----------------------------------------------------------------------------
+// Chave de API obrigatória
+// -----------------------------------------------------------------------------
+// Sem chave configurada a API fica inacessível (todas as rotas de negócio
+// respondem 500), então é melhor falhar no boot, onde o erro é visível no log
+// do PM2, do que devolver erro em toda requisição.
+if (!env.apiKeys.length) {
+  throw new Error(
+    `Nenhuma chave de API configurada em ${envFile}: defina ALLOWED_API_KEYS ` +
+    '(uma ou mais chaves separadas por vírgula).'
+  );
+}
 
 module.exports = env;
