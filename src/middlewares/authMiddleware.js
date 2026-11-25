@@ -25,10 +25,11 @@ const { ERROR_CODES } = require('../utils/constants');
 //   router.get('/', autenticar, asyncHandler(Controller.listar));       // exige credencial
 //   router.get('/', autenticarOpcional, asyncHandler(Controller.listar)); // usa se houver
 //
-// Nesta API o que está em uso é `autenticarApiKey` (aplicado em bloco em
-// src/routes/index.js): só há consumidores server-to-server, e aceitar JWT
-// ampliaria a superfície sem necessidade. O caminho JWT fica disponível para
-// quando o portal passar a consumir a API direto do navegador.
+// Nesta API as rotas de negócio usam `autenticarApiKey` (aplicado em bloco em
+// src/routes/index.js): os consumidores são server-to-server, e aceitar JWT
+// nelas ampliaria a superfície sem necessidade. A exceção é
+// /api/comissoes/ativas, consumida pelo frontend direto do navegador, que usa
+// `autenticar` (JWT do usuário logado ou x-api-key).
 // =============================================================================
 
 /**

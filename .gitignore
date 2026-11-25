@@ -1,10 +1,9 @@
 node_modules/
 
 # Configuração com credenciais — nunca versionar.
-# Apenas .env.example vai para o repositório.
+# As variáveis estão documentadas em src/config/env.js.
 .env
 .env.*
-!.env.example
 
 logs/
 *.log

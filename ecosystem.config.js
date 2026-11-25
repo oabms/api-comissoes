@@ -2,7 +2,7 @@
 // PM2 — CONFIGURAÇÃO DE PROCESSO
 // =============================================================================
 // Subir:      pm2 start ecosystem.config.js --env production
-// Atualizar:  pm2 reload ecosystem.config.js --env production   (sem downtime)
+// Atualizar:  pm2 reload ecosystem.config.js --env production
 // Persistir:  pm2 save
 //
 // `name` é o que aparece no `pm2 list` e o que distingue os processos no
@@ -15,8 +15,8 @@ module.exports = {
       name: 'api-comissoes-oabms',
       script: './server.js',
 
-      // Duas instâncias em cluster: aproveita mais de um núcleo e permite
-      // reload sem derrubar a API.
+      // Uma instância em fork: o `pm2 reload` vira um restart (alguns segundos
+      // fora). Para reload sem downtime, use exec_mode 'cluster' com 2+.
       //
       // ATENÇÃO: com mais de uma instância, qualquer estado em memória
       // (cache, contador, sessão) deixa de ser confiável — cada processo tem o
@@ -39,7 +39,7 @@ module.exports = {
       kill_timeout: 12000,
 
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'development'
       },
 
       env_production: {

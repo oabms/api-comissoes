@@ -141,6 +141,33 @@ module.exports = {
     OFFSET @offset ROWS FETCH NEXT @limite ROWS ONLY
   `,
 
+  /**
+   * Lista enxuta das comissões ATIVAS (ID, descrição, sigla), sem paginação,
+   * para o frontend montar seletores.
+   *
+   * EXCEÇÃO DELIBERADA ao recorte E_UMA_COMISSAO: o filtro aqui foi definido
+   * pela área que consome o endpoint — nome CONTENDO "COMISSÃO" e
+   * `CLI_Ativo = 'X'` (flag do legado, ver FLAG em comissaoConstants.js).
+   * Consequências conhecidas:
+   *   - um registro gravado sem acento ("COMISSAO ...") não aparece;
+   *   - um ID devolvido aqui pode responder 404 em /api/comissoes/:id, que
+   *     segue o recorte por prefixo.
+   *
+   * Os literais são constantes do próprio SQL, nada vem da requisição.
+   */
+  LISTAR_COMISSOES_ATIVAS: `
+    SELECT
+        ID,
+        Descricao,
+        Sigla
+    FROM
+        Comissao
+    WHERE
+        Descricao LIKE '%COMISSÃO%'
+        AND CLI_Ativo = 'X'
+    ORDER BY Descricao
+  `,
+
   CONTAR_COMISSOES: `
     SELECT COUNT(1) AS total
     FROM Comissao c

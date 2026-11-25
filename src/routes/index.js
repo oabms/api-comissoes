@@ -2,7 +2,7 @@ const express = require('express');
 
 const env = require('../config/env');
 
-const { autenticarApiKey } = require('../middlewares/authMiddleware');
+const { autenticar, autenticarApiKey } = require('../middlewares/authMiddleware');
 
 const healthRoutes = require('./healthRoutes');
 const comissaoRoutes = require('./comissaoRoutes');
@@ -19,6 +19,11 @@ const pessoaRoutes = require('./pessoaRoutes');
 // chaves de ALLOWED_API_KEYS. O middleware é aplicado AQUI, no `router.use` de
 // cada módulo, e não rota a rota — assim uma rota nova já nasce protegida.
 //
+// Exceção: /api/comissoes/ativas é chamada pelo frontend, direto do navegador,
+// e por isso usa `autenticar` — aceita o JWT do usuário logado (emitido pela
+// api-register-login) ou a x-api-key. Ela é montada ANTES de '/comissoes' para
+// ser atendida pelo próprio router e nunca passar pelo `autenticarApiKey`.
+//
 // Ficam abertas apenas /api (catálogo de endpoints) e /api/health, que não
 // devolvem dado de pessoa e são o que o monitoramento consulta.
 // =============================================================================
@@ -30,7 +35,8 @@ const router = express.Router();
  * e é a primeira coisa consultada por quem vai integrar com a API.
  * Mantenha atualizado ao criar rotas.
  *
- * Os endpoints marcados com [auth] exigem o header `x-api-key`.
+ * [auth]     exige o header `x-api-key`.
+ * [auth-jwt] aceita `Authorization: Bearer <jwt>` ou `x-api-key`.
  */
 const ENDPOINTS = {
   health: {
@@ -38,6 +44,7 @@ const ENDPOINTS = {
   },
   comissoes: {
     'GET /api/comissoes': '[auth] Catálogo de comissões (?q=&page=&limit=)',
+    'GET /api/comissoes/ativas': '[auth-jwt] Lista simples das comissões ativas (id, descricao, sigla), sem paginação',
     'GET /api/comissoes/:id': '[auth] Detalhe de uma comissão',
     'GET /api/comissoes/:id/membros': '[auth] Membros da comissão (?vigentes=&cargo=&q=&page=&limit=)'
   },
@@ -48,6 +55,7 @@ const ENDPOINTS = {
 };
 
 router.use('/health', healthRoutes);
+router.use('/comissoes/ativas', autenticar, comissaoRoutes.rotasFrontend);
 router.use('/comissoes', autenticarApiKey, comissaoRoutes);
 router.use('/pessoas', autenticarApiKey, pessoaRoutes);
 

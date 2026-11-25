@@ -55,7 +55,12 @@ const OBRIGATORIAS = [
   'DB_SERVER',
   'DB_DATABASE',
   'DB_USER',
-  'DB_PASSWORD'
+  'DB_PASSWORD',
+
+  // /api/comissoes/ativas aceita o JWT do frontend. Sem o secret, todo token
+  // levaria 500 em runtime — melhor a API não subir. Deve ser IDÊNTICO ao da
+  // api-register-login, que assina os tokens.
+  'JWT_SECRET'
 ];
 
 const faltando = OBRIGATORIAS.filter(variavel => !process.env[variavel]);
@@ -78,7 +83,10 @@ const env = {
 
   // Nome e versão aparecem no log de boot, na rota `/` e no health check.
   nomeApi: process.env.API_NAME || 'api-comissoes',
-  versaoApi: process.env.npm_package_version || '1.0.0',
+  // Lida do package.json, e não de npm_package_version: essa variável só existe
+  // quando a API sobe por `npm start`/`npm run dev`. O PM2 roda o server.js
+  // direto, e a versão sairia sempre como o valor fixo.
+  versaoApi: require('../../package.json').version,
 
   // Prefixo de todas as rotas de negócio (ex: /api/comissoes).
   prefixoApi: process.env.API_PREFIX || '/api',
@@ -112,7 +120,8 @@ const env = {
   // ---------------------------------------------------------------------------
   // Esta API é protegida por API Key: toda rota de negócio exige o header
   // `x-api-key` com uma das chaves listadas abaixo (ver
-  // src/middlewares/authMiddleware.js).
+  // src/middlewares/authMiddleware.js). A exceção é /api/comissoes/ativas, que
+  // também aceita o JWT do frontend, validado com JWT_SECRET.
   //
   // ALLOWED_API_KEYS aceita várias chaves separadas por vírgula, o que permite
   // rotacionar a chave sem derrubar o consumidor: publica-se a nova, os clientes

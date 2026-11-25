@@ -1,6 +1,6 @@
 {
   "name": "api-comissoes",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "API de consulta das comissões da OAB/MS: composição de cada comissão e vínculos por pessoa",
   "main": "server.js",
   "type": "commonjs",

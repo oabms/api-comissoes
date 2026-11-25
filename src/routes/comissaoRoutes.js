@@ -12,8 +12,9 @@ const asyncHandler = require('../utils/asyncHandler');
 // Ordem dos middlewares: [regras do validator] -> validate -> asyncHandler.
 //
 // A autenticação NÃO aparece aqui: o `x-api-key` é exigido no `router.use` do
-// índice (src/routes/index.js), de modo que vale para todas as rotas deste
-// arquivo, inclusive as que forem criadas depois.
+// índice (src/routes/index.js), de modo que vale para todas as rotas de
+// `router`, inclusive as que forem criadas depois. A exceção é `rotasFrontend`,
+// no fim do arquivo, que aceita JWT.
 // =============================================================================
 
 const router = express.Router();
@@ -51,4 +52,26 @@ router.get(
   asyncHandler(ComissaoController.buscarPorId)
 );
 
+// =============================================================================
+// ROTAS CONSUMIDAS PELO FRONTEND (JWT)
+// =============================================================================
+// Router separado porque a autenticação é outra: o navegador manda o JWT do
+// usuário logado (Authorization: Bearer), já que a x-api-key não pode ficar
+// exposta no código do front. O índice monta este router em
+// '/comissoes/ativas' com `autenticar` (JWT ou x-api-key), ANTES do router
+// principal — por isso "ativas" nunca chega a ser lido como '/:id'.
+// =============================================================================
+
+const rotasFrontend = express.Router();
+
+/**
+ * GET /api/comissoes/ativas
+ * Lista enxuta (id, descricao, sigla) das comissões ativas, para seletores.
+ */
+rotasFrontend.get(
+  '/',
+  asyncHandler(ComissaoController.listarAtivas)
+);
+
 module.exports = router;
+module.exports.rotasFrontend = rotasFrontend;

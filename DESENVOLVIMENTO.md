@@ -74,7 +74,12 @@ o código já trata:
    comissões. O recorte está em `E_UMA_COMISSAO` (queries) e vale para **toda**
    consulta que toca `Comissao` — inclusive a busca por ID, que responde 404
    para uma estrutura administrativa, e a ficha de uma pessoa, que não mostra
-   vínculos fora do recorte;
+   vínculos fora do recorte.
+
+   **Única exceção:** `GET /api/comissoes/ativas` (`LISTAR_COMISSOES_ATIVAS`)
+   usa o filtro definido pela área que consome o endpoint — nome *contendo*
+   "COMISSÃO" e `CLI_Ativo = 'X'`. Foi uma decisão de negócio, não descuido:
+   não "corrija" para `E_UMA_COMISSAO` sem alinhar com quem pediu;
 
 5. **`Pessoa.RegistroConselho` não é único.** É varchar e se repete em 167
    números da base (em geral uma sociedade de advogados e um advogado com o
@@ -99,25 +104,36 @@ Requisitos: Node.js 18+ e acesso de rede ao SQL Server.
 
 ## Configuração
 
-Copie `.env.example` para `.env` e preencha:
-
-```bash
-cp .env.example .env
-```
-
-O projeto trabalha com **dois arquivos de ambiente**:
+O projeto trabalha com **dois arquivos de ambiente**, criados à mão na raiz:
 
 | Arquivo        | Quando é carregado        |
 | -------------- | ------------------------- |
 | `.env`         | padrão (homologação/dev)  |
 | `.env.producao`| quando `APP_ENV=producao` |
 
-Nenhum dos dois vai para o Git — somente `.env.example`.
+Nenhum dos dois vai para o Git: eles guardam senha de banco, chaves de API e o
+secret do JWT.
 
-Todas as variáveis são lidas e validadas em [`src/config/env.js`](src/config/env.js).
-**Nenhum outro arquivo do projeto lê `process.env` diretamente.** Se faltar uma
-variável obrigatória, a API não sobe — falha no boot em vez de erro obscuro em
-produção.
+**A referência de variáveis é [`src/config/env.js`](src/config/env.js).** Todas
+são lidas e validadas ali, com o padrão de cada uma e um comentário explicando
+para que serve. **Nenhum outro arquivo do projeto lê `process.env`
+diretamente.** Se faltar uma variável obrigatória, a API não sobe: falha no boot
+em vez de dar erro obscuro em produção.
+
+Obrigatórias (sem elas a API não sobe):
+
+| Variável | Para quê |
+| --- | --- |
+| `DB_SERVER`, `DB_DATABASE`, `DB_USER`, `DB_PASSWORD` | Conexão com o SQL Server |
+| `ALLOWED_API_KEYS` | Chaves aceitas no header `x-api-key`, separadas por vírgula |
+| `JWT_SECRET` | Valida o JWT do frontend. **Idêntico** ao da api-register-login |
+
+As demais (porta, pool, CORS, rate limit, logs) são opcionais e têm padrão em
+`env.js`. Para gerar uma chave de API:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
 ---
 
@@ -186,7 +202,6 @@ formata a resposta e registra o log.
 api-comissoes/
 ├── server.js                    Boot, graceful shutdown, erros de processo
 ├── ecosystem.config.js          PM2
-├── .env.example                 Modelo de configuração (versionado)
 │
 └── src/
     ├── app.js                   Montagem do Express (separado do listen)
@@ -213,7 +228,7 @@ api-comissoes/
     │   │   └── BaseService.js       Classe base (this.db + logs nomeados)
     │   ├── HealthService.js
     │   └── comissao/
-    │       ├── ComissaoService.js      Regra + mapeamento das 3 consultas
+    │       ├── ComissaoService.js      Regra + mapeamento das consultas
     │       ├── queries/comissaoQueries.js
     │       └── constants/comissaoConstants.js   IDs de cargo e hierarquia
     │
@@ -222,7 +237,7 @@ api-comissoes/
     │   └── pessoaValidator.js
     │
     ├── middlewares/
-    │   ├── authMiddleware.js    JWT + API Key
+    │   ├── authMiddleware.js    API Key (rotas de negócio) + JWT (rota do front)
     │   ├── rateLimiter.js       Limitador global + fábrica
     │   ├── requestLogger.js     Uma linha por requisição
     │   ├── validate.js          Coletor do express-validator
@@ -385,30 +400,47 @@ enquanto a tabela avança e faz o legado gravar IDs já usados.
 
 ## Autenticação
 
-Duas formas, aceitas nesta ordem:
+Duas formas:
 
 | Forma   | Header                          | Para quem                       |
 | ------- | ------------------------------- | ------------------------------- |
-| JWT     | `Authorization: Bearer <token>` | Frontend / portal               |
 | API Key | `x-api-key: <chave>`            | Chamadas entre APIs internas    |
+| JWT     | `Authorization: Bearer <token>` | Frontend, direto do navegador   |
 
 O JWT é emitido pela **api-register-login** e assinado em HS256. O `JWT_SECRET`
 desta API **deve ser idêntico** ao dela, senão todo token é rejeitado com 401.
 
-Nas rotas:
+`ALLOWED_API_KEYS` e `JWT_SECRET` são **obrigatórias**: sem qualquer uma das
+duas a API não sobe.
+
+**Quem usa o quê** (tudo montado em [`src/routes/index.js`](src/routes/index.js)):
+
+| Rota | Middleware | Aceita |
+| --- | --- | --- |
+| `/api`, `/api/health` | nenhum | público |
+| `/api/comissoes/ativas` | `autenticar` | JWT **ou** x-api-key |
+| `/api/comissoes/*`, `/api/pessoas/*` | `autenticarApiKey` | só x-api-key |
+
+A autenticação é aplicada no `router.use` do índice, não rota a rota, para que
+uma rota nova já nasça protegida. `/comissoes/ativas` vive em um router à parte
+(`rotasFrontend`, em `comissaoRoutes.js`) montado **antes** de `/comissoes`:
+assim ela é atendida com `autenticar` e nunca passa pelo `autenticarApiKey`.
+
+Para expor outra rota ao frontend, acrescente-a ao `rotasFrontend` (ou crie um
+router equivalente) e monte com `autenticar`. Não troque o middleware do
+`router.use('/comissoes', ...)`: isso abriria todas as rotas ao JWT.
+
+Middlewares disponíveis:
 
 ```js
-const { autenticar, autenticarOpcional } = require('../middlewares/authMiddleware');
+const { autenticar, autenticarApiKey, autenticarOpcional } = require('../middlewares/authMiddleware');
 
-router.post('/', autenticar, ...);          // exige credencial válida
-router.get('/', autenticarOpcional, ...);   // preenche req.user se houver, nunca bloqueia
+autenticarApiKey     // só x-api-key
+autenticar           // JWT ou x-api-key (tenta o JWT primeiro)
+autenticarOpcional   // preenche req.user se houver credencial, nunca bloqueia
 ```
 
-Dentro do controller ficam disponíveis `req.user`, `req.userId` e
-`req.tipoAutenticacao`.
-
-Se a API for **totalmente pública**, basta não usar o middleware — deixe
-`JWT_SECRET` e `ALLOWED_API_KEYS` vazios.
+Com JWT, o controller tem `req.user`, `req.userId` e `req.tipoAutenticacao`.
 
 ---
 
@@ -476,17 +508,27 @@ npm ci --omit=dev
 pm2 start ecosystem.config.js --env production
 pm2 save
 
-# atualizações (sem downtime)
+# atualizações
 pm2 reload ecosystem.config.js --env production
 ```
 
-`--env production` define `NODE_ENV=production` e `APP_ENV=producao`, fazendo a
-API carregar o `.env.producao`.
+O `--env` decide qual configuração sobe:
 
-Roda em **cluster com 2 instâncias**. Consequência prática: qualquer estado em
-memória (cache, contador, sessão) deixa de ser confiável, pois cada processo tem
-o seu. Numeração sequencial precisa ser resolvida no banco, com `SEQUENCE` ou
-lock (`WITH (UPDLOCK, HOLDLOCK)`).
+| Comando | `NODE_ENV` | Arquivo carregado |
+| --- | --- | --- |
+| `pm2 start ecosystem.config.js --env production` | `production` | `.env.producao` (via `APP_ENV=producao`) |
+| `pm2 start ecosystem.config.js` (sem `--env`) | `development` | `.env` |
+
+Em produção, **sempre** passe `--env production`. Sem ele a API sobe como
+development, apontando para o banco de homologação do `.env`.
+
+Roda com **1 instância em modo `fork`**. Com uma instância só, o `pm2 reload`
+equivale a um restart: a API fica alguns segundos fora durante a atualização.
+
+Se um dia passar para `cluster` com mais instâncias, qualquer estado em memória
+(cache, contador, sessão) deixa de ser confiável, pois cada processo tem o seu.
+Numeração sequencial precisa ser resolvida no banco, com `SEQUENCE` ou lock
+(`WITH (UPDLOCK, HOLDLOCK)`).
 
 ---
 
@@ -503,5 +545,6 @@ lock (`WITH (UPDLOCK, HOLDLOCK)`).
 - **Comentários** explicam o *porquê*, não o *o quê*. Decisão não óbvia (hint de
   lock, workaround do legado, ordem que importa) merece comentário; getter
   trivial não.
-- Ao adicionar uma variável de ambiente: declare em `src/config/env.js` **e**
-  documente em `.env.example`.
+- Ao adicionar uma variável de ambiente: declare em `src/config/env.js`, com
+  padrão e um comentário dizendo para que serve. Se for obrigatória, inclua em
+  `OBRIGATORIAS` **e** na tabela da seção [Configuração](#configuração).

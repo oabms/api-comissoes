@@ -8,15 +8,16 @@ const { montarResultadoPaginado, escaparLike } = require('../../utils/pagination
 // =============================================================================
 // COMISSÃO SERVICE
 // =============================================================================
-// Regra de negócio das três consultas que a API oferece:
+// Regra de negócio das consultas que a API oferece:
 //
 //   1. listar / buscarPorId       -> catálogo de comissões;
-//   2. listarMembros              -> quem compõe uma comissão;
-//   3. listarComissoesDaPessoa    -> em quais comissões alguém atua.
+//   2. listarAtivas               -> lista enxuta para seletores do frontend;
+//   3. listarMembros              -> quem compõe uma comissão;
+//   4. listarComissoesDaPessoa    -> em quais comissões alguém atua.
 //
-// Todas leem HistoricoCargo, a tabela de vínculos do legado. As colunas cruas
-// (PascalCase, BIGINT como string, datas) nunca chegam ao cliente: passam pelos
-// `mapear*` abaixo.
+// As de vínculo (3 e 4) leem HistoricoCargo, a tabela de vínculos do legado.
+// As colunas cruas (PascalCase, BIGINT como string, datas) nunca chegam ao
+// cliente: passam pelos `mapear*` e pelo `texto()` abaixo.
 //
 // API somente de consulta — não há escrita neste service.
 // =============================================================================
@@ -136,6 +137,24 @@ class ComissaoService extends BaseService {
       Number(contagem?.total || 0),
       paginacao
     );
+  }
+
+  /**
+   * Comissões ativas (CLI_Ativo = 'X'), só com ID, descrição e sigla.
+   * Usa um filtro próprio, fora do recorte E_UMA_COMISSAO — ver
+   * LISTAR_COMISSOES_ATIVAS nas queries.
+   *
+   * Sem paginação de propósito: são poucas dezenas de linhas e o uso é
+   * preencher um seletor no frontend, que precisa da lista inteira de uma vez.
+   */
+  async listarAtivas() {
+    const linhas = await this.db.query(queries.LISTAR_COMISSOES_ATIVAS);
+
+    return linhas.map(linha => ({
+      id: Number(linha.ID),
+      descricao: this.texto(linha.Descricao),
+      sigla: this.texto(linha.Sigla)
+    }));
   }
 
   /**

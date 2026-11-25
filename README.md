@@ -26,6 +26,7 @@ sistema antigo. Ver [o que entra e o que não entra](#o-que-entra-e-o-que-não-e
 - [Começando](#começando)
 - [Os endpoints](#os-endpoints)
   - [Listar comissões](#listar-comissões)
+  - [Comissões ativas (lista simples)](#comissões-ativas-lista-simples)
   - [Detalhe de uma comissão](#detalhe-de-uma-comissão)
   - [Membros de uma comissão](#membros-de-uma-comissão)
   - [Comissões de um advogado](#comissões-de-um-advogado)
@@ -38,13 +39,30 @@ sistema antigo. Ver [o que entra e o que não entra](#o-que-entra-e-o-que-não-e
 
 ## Começando
 
-Não precisa de token, senha nem cadastro: todos os endpoints são públicos e
-funcionam com um `GET` simples.
+Todos os endpoints de dados são `GET` e **exigem autenticação**. Há duas
+formas, e cada endpoint diz qual aceita:
+
+| Forma | Header | Para quem | Onde vale |
+| --- | --- | --- | --- |
+| Chave de API | `x-api-key: <chave>` | Sistemas e APIs internas (servidor para servidor) | Todos os endpoints |
+| Token JWT | `Authorization: Bearer <token>` | Frontend, direto do navegador | Só `GET /api/comissoes/ativas` |
+
+- **Chave de API:** peça à TI. Ela **nunca** deve ir para o código do frontend,
+  porque qualquer pessoa a veria pelo navegador.
+- **Token JWT:** é o mesmo token que o usuário recebe ao fazer login na
+  `api-register-login`. O front só repassa esse token no header.
 
 ```bash
-# homologação
-curl http://172.29.7.14:47159/api/comissoes?q=jovem
+# homologação, servidor para servidor
+curl -H "x-api-key: SUA_CHAVE" "http://172.29.7.14:47159/api/comissoes?q=jovem"
+
+# frontend (token do usuário logado)
+curl -H "Authorization: Bearer SEU_TOKEN" "http://172.29.7.14:47159/api/comissoes/ativas"
 ```
+
+Sem credencial, ou com credencial inválida, a resposta é `401` (ver
+[Erros](#erros)). Para encurtar, os outros exemplos deste documento omitem o
+header.
 
 | Ambiente | Endereço base |
 | --- | --- |
@@ -53,7 +71,7 @@ curl http://172.29.7.14:47159/api/comissoes?q=jovem
 
 Confirme com a TI os endereços dos dois ambientes antes de publicar.
 
-Duas URLs ajudam a se situar:
+Duas URLs ajudam a se situar, e são as únicas que não pedem autenticação:
 
 - `GET /api` — lista todos os endpoints disponíveis;
 - `GET /api/health` — diz se a API e o banco estão no ar.
@@ -65,6 +83,7 @@ Duas URLs ajudam a se situar:
 | O que você quer | Chame |
 | --- | --- |
 | Achar uma comissão pelo nome | `GET /api/comissoes?q=penal` |
+| Montar um seletor com todas as comissões ativas | `GET /api/comissoes/ativas` |
 | Ver os dados de uma comissão | `GET /api/comissoes/103` |
 | Ver quem compõe uma comissão | `GET /api/comissoes/103/membros` |
 | Ver as comissões de um advogado (pelo nº da OAB) | `GET /api/pessoas/oab/22531/comissoes` |
@@ -119,6 +138,51 @@ curl "http://172.29.7.14:47159/api/comissoes?q=penal&limit=3"
 `sigla`, `inicioVigencia` e `fimVigencia` costumam vir `null` — o cadastro
 antigo não preencheu esses campos para a maioria das comissões. Conte sempre com
 `descricao`, que está sempre preenchida.
+
+---
+
+### Comissões ativas (lista simples)
+
+```
+GET /api/comissoes/ativas
+```
+
+Todas as comissões **ativas** de uma vez, só com `id`, `descricao` e `sigla`,
+em ordem alfabética. Não tem paginação nem parâmetros. Feita para preencher um
+seletor (combo) no frontend.
+
+É o **único endpoint que aceita o token JWT** do usuário logado, além da chave
+de API, então o frontend pode chamá-lo direto do navegador.
+
+```bash
+curl -H "Authorization: Bearer SEU_TOKEN" "http://172.29.7.14:47159/api/comissoes/ativas"
+```
+
+```js
+// no frontend
+const resposta = await fetch(`${API_COMISSOES}/comissoes/ativas`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+const { data } = await resposta.json();   // [{ id, descricao, sigla }, ...]
+```
+
+**O que entra:** registros com "COMISSÃO" em qualquer parte do nome **e**
+marcados como ativos no cadastro. Esse critério é diferente do usado pelos
+outros endpoints (ver [o que entra e o que não entra](#o-que-entra-e-o-que-não-entra)):
+
+- uma comissão cadastrada sem acento ("COMISSAO ...") não aparece aqui;
+- um `id` desta lista pode, em casos raros, responder `404` em
+  `/api/comissoes/{id}`.
+
+```json
+{
+  "success": true,
+  "message": "Comissões ativas encontradas.",
+  "data": [
+    { "id": 162, "descricao": "COMISSÃO DE DIREITO PENAL MILITAR", "sigla": "CDPM" }
+  ]
+}
+```
 
 ---
 
@@ -326,6 +390,10 @@ página com `?page=2`, `?page=3`…
 | Status | `code` | O que houve | O que fazer |
 | --- | --- | --- | --- |
 | `400` | `VALIDATION_ERROR` | Parâmetro fora do formato (letra onde se espera número, `limit` acima de 100, busca com menos de 3 letras) | Veja a lista `errors` da resposta: ela diz o campo e o motivo |
+| `401` | `NO_TOKEN` | A requisição não trouxe credencial | Envie `x-api-key` (ou o `Bearer`, em `/comissoes/ativas`) |
+| `401` | `INVALID_API_KEY` | A chave de API não é aceita | Confira a chave com a TI |
+| `401` | `INVALID_TOKEN` | O token JWT é inválido | Faça login de novo para obter outro token |
+| `401` | `EXPIRED_TOKEN` | O token JWT expirou | Faça login de novo para obter outro token |
 | `404` | `NOT_FOUND` | A comissão ou a pessoa não existe | Confira o ID ou o número da OAB |
 | `409` | `CONFLICT` | O número da OAB está em mais de um cadastro (raro, ver abaixo) | Use o `pessoas` da resposta para escolher e repita por ID |
 | `429` | `TOO_MANY_REQUESTS` | Excedeu 300 requisições em 15 minutos, pelo mesmo IP | Espere e reduza o ritmo |
@@ -373,7 +441,9 @@ O critério é o nome começar com "COMISSÃO". Ficam de fora também os registr
 zerados que o sistema antigo deixa para trás — 8 linhas chamadas "COMISSÃO
 DESATIVADA" e uma "COMISSÃO TESTE", nenhuma com membro.
 
-Isso vale para **todos** os endpoints, não só para a busca:
+Isso vale para todos os endpoints, não só para a busca. A exceção é
+`/api/comissoes/ativas`, que tem critério próprio
+([ver](#comissões-ativas-lista-simples)). Nos demais:
 
 - um ID que não seja de comissão responde `404`, como se não existisse;
 - na ficha de uma pessoa, aparecem apenas as comissões — quem também tem
@@ -459,6 +529,12 @@ instituições. Hoje, 799 dos 817 membros têm o número preenchido (98%).
 **As datas vêm em que fuso?**
 Em UTC, no formato ISO (`2022-03-10T00:00:00.000Z`). No cadastro só a data
 importa; a hora é sempre zero.
+
+**Posso usar a chave de API no frontend?**
+Não. Tudo o que vai para o navegador fica visível para qualquer usuário, e com
+a chave dá para consultar todos os endpoints. No frontend, use o token JWT do
+usuário logado em `/api/comissoes/ativas`. Se precisar de outro dado, peça a
+consulta ao seu backend, que guarda a chave.
 
 **Tem limite de uso?**
 300 requisições a cada 15 minutos por IP. Passando disso vem `429` — os

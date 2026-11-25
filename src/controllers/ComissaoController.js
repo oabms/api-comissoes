@@ -26,6 +26,15 @@ class ComissaoController {
   }
 
   /**
+   * GET /api/comissoes/ativas
+   */
+  async listarAtivas(req, res) {
+    const resultado = await ComissaoService.listarAtivas();
+
+    return Response.success(res, resultado, 'Comissões ativas encontradas.');
+  }
+
+  /**
    * GET /api/comissoes/:id
    */
   async buscarPorId(req, res) {
